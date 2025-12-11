@@ -1,0 +1,29 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Titan (C++23)",
+            "type": "shell",
+            "command": "/usr/bin/g++-14",
+            "args": [
+                "-std=c++23",
+                "-O3",
+                "-march=native",
+                "-g",
+                "-pthread",
+                "${workspaceFolder}/src/main.cpp",
+                "-o",
+                "${workspaceFolder}/build/titan_engine"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Compiles to build/ folder"
+        }
+    ]
+}
