@@ -51,5 +51,7 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "text_encoding": "cpp"
-    }
+    },
+    "kdb.connectionMap": {},
+    "kdb.targetMap": {}
 }

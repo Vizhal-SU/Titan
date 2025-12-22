@@ -9,21 +9,15 @@
 // ==================================================================================
 
 struct __attribute__((packed)) EnterOrderMsg {
-    char     type = 'O';            // 'O' = Enter Order
-    char     token[14];             // Client Order ID (ASCII)
-    char     side;                  // 'B' or 'S'
-    uint32_t shares;                // Quantity
-    char     symbol[8];             // Symbol
-    uint32_t price;                 // Limit Price
-    uint32_t time_in_force = 99999; // 0 = Day, 99999 = IOC (Immediate or Cancel)
-    char     firm[4] = {'T', 'I', 'T', 'N'};      // MPID
-    char     display = 'Y';
-    char     capacity = 'P';        // Principal
-    char     intermarket = 'N';
-    uint32_t min_qty = 0;
-    uint32_t cross_type = 0;
-    char     customer_type = 'R';
+    char    type = 'O';            // 1 byte
+    char    token[14];             // 14 bytes
+    char    side;                  // 1 byte
+    uint32_t shares;               // 4 bytes
+    char    symbol[8];             // 8 bytes
+    uint32_t price;                // 4 bytes
+
 };
+// TOTAL SIZE: 32 Bytes (Matches Python exactly)
 
 // Helper to format the packet for the wire (Host -> Network Byte Order)
 inline void format_enter_order(EnterOrderMsg& msg, 

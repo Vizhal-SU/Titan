@@ -1,40 +1,52 @@
 #pragma once
 #include <array>
-#include <string>
+#include <cstring>
 #include <vector>
 #include <iostream>
+#include "../parser/Itch.hpp"
 
-// Simple lookup: Locate ID -> Symbol Name
 class StockDirectory {
-private:
-    // 65536 is the max number of Locates in NASDAQ spec
-    // We store the string symbol for reporting/OUCH.
-    std::array<std::string, 65536> id_to_symbol_;
-    
-    // We also need to know if a locate is active/valid
-    std::vector<bool> active_ids_;
-
 public:
+    // 1. SINGLETON ACCESSOR (Meyers' Singleton)
+    // Thread-safe in C++11+. Created on first use.
+    static StockDirectory& instance() {
+        static StockDirectory instance;
+        return instance;
+    }
+
+    // Delete copy/move to prevent duplication
+    StockDirectory(const StockDirectory&) = delete;
+    void operator=(const StockDirectory&) = delete;
+
+    // 2. DATA PROCESSING
+    void on_directory_message(const DirectoryMsg& msg) {
+        if (msg.locate >= 65536) return;
+
+        // Copy 8 bytes from message
+        std::memcpy(map_[msg.locate].name, msg.symbol, 8);
+        
+        // Null terminate and trim spaces
+        map_[msg.locate].name[8] = '\0';
+        for (int i = 7; i >= 0; --i) {
+            if (map_[msg.locate].name[i] == ' ') map_[msg.locate].name[i] = '\0';
+            else break;
+        }
+
+        active_ids_[msg.locate] = true;
+    }
+
+    const char* get_symbol(uint16_t locate) const {
+        if (locate >= 65536 || !active_ids_[locate]) return "UNKNOWN";
+        return map_[locate].name;
+    }
+
+private:
+    // PRIVATE CONSTRUCTOR
     StockDirectory() : active_ids_(65536, false) {
-        // PRE-LOAD: In a real system, we parse "Stock Directory" messages from ITCH.
-        // For this sim, we hardcode a few.
-        register_stock(1, "AAPL");
-        register_stock(2, "MSFT");
-        register_stock(3, "GOOG");
-        register_stock(4, "TSLA");
+        std::memset(&map_, 0, sizeof(map_));
     }
 
-    void register_stock(uint16_t locate, const std::string& symbol) {
-        if (locate >= 65536) return;
-        id_to_symbol_[locate] = symbol;
-        active_ids_[locate] = true;
-        std::cout << "[DIR] Registered Locate " << locate << " => " << symbol << std::endl;
-    }
-
-    const std::string& get_symbol(uint16_t locate) const {
-        // Return symbol or "UNKNOWN" if invalid
-        static const std::string unknown = "UNKNOWN";
-        if (locate >= 65536 || !active_ids_[locate]) return unknown;
-        return id_to_symbol_[locate];
-    }
+    struct SymbolEntry { char name[9]; };
+    std::array<SymbolEntry, 65536> map_;
+    std::vector<bool> active_ids_;
 };

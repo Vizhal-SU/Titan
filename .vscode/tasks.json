@@ -12,6 +12,7 @@
                 "-g",
                 "-pthread",
                 "${workspaceFolder}/src/main.cpp",
+                "c.o",
                 "-o",
                 "${workspaceFolder}/build/titan_engine"
             ],
@@ -20,10 +21,12 @@
             },
             "group": {
                 "kind": "build",
-                "isDefault": true
+                "isDefault": false
             },
-            "problemMatcher": ["$gcc"],
+            "problemMatcher": [
+                "$gcc"
+            ],
             "detail": "Compiles to build/ folder"
-        }
+        },
     ]
 }

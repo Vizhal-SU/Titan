@@ -99,3 +99,44 @@ inline void parse_order_executed(const char* buffer, OrderExecutedMsg& out) {
     out.order_ref       = std::byteswap(raw->order_ref);
     out.executed_shares = std::byteswap(raw->executed_shares);
 }
+
+// [Append this to Itch.hpp]
+
+// ==================================================================================
+// MESSAGE: Stock Directory ('R')
+// ==================================================================================
+// Sent at the start of the day to map "Locate IDs" (Integers) to "Ticker Symbols" (Strings).
+struct __attribute__((packed)) DirectoryMsg {
+    char     msg_type;      // 'R'
+    uint16_t locate;        // Map this ID...
+    uint16_t tracking;
+    uint64_t timestamp;     // 6 bytes in spec, but we usually map 8 and mask, or ignore
+    char     symbol[8];     // ...to this String "AAPL    "
+    char     market_category;
+    char     financial_status;
+    uint32_t round_lot_size;
+    char     round_lot_only;
+    char     issue_classification;
+    char     issue_subtype[2];
+    char     authenticity;
+    char     short_sale_threshold;
+    char     ipo_flag;
+    char     luld_tier;
+    char     etp_flag;
+    uint32_t etp_leverage;
+    char     inverse_ind;
+};
+
+// Parser for Directory Message
+inline void parse_directory(const char* buffer, DirectoryMsg& out) {
+    const auto* raw = reinterpret_cast<const DirectoryMsg*>(buffer);
+    
+    out.msg_type = raw->msg_type;
+    out.locate   = std::byteswap(raw->locate); // Critical: Swap ID
+    
+    // We only really care about the symbol for the directory
+    std::copy(std::begin(raw->symbol), std::end(raw->symbol), std::begin(out.symbol));
+    
+    // Optional: Parse other fields if you need them for strategy logic
+    out.round_lot_size = std::byteswap(raw->round_lot_size);
+}
