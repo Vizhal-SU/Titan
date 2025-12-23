@@ -10,9 +10,9 @@
 / Note: All columns initialized as empty lists to avoid 'length errors
 / Renamed 'type' -> 'msgType' to avoid reserved keyword conflict
 
-orders: ([] time:`timespan$(); sym:`symbol$(); price:`float$(); size:`int$(); side:`char$(); orderID:`long$());
+orders: ([] time:`timestamp$(); sym:`symbol$(); price:`float$(); size:`int$(); side:`char$(); orderID:`long$());
 
-market: ([] time:`timespan$(); sym:`symbol$(); price:`float$(); size:`int$(); msgType:`char$(); side:`char$());
+market: ([] time:`timestamp$(); sym:`symbol$(); price:`float$(); size:`int$(); msgType:`char$(); side:`char$());
 
 / 3. UPDATE HANDLER
 / Called automatically by C++ when it sends data

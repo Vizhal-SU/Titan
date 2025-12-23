@@ -3,31 +3,18 @@
 #include <cstring>
 #include <iostream>
 #include <chrono>
-#include <vector>
 
 constexpr long long KDB_EPOCH_OFFSET = 946684800000000000LL;
-constexpr int MARKET_BATCH_LIMIT = 512; // Batch 100 ticks to clear the lag
 
 class KdbLogger {
     int handle = -1;
     long last_retry_time = 0;
 
-    // Local C++ buffers - 100% safe from Segfaults
-    std::vector<long long> b_time;
-    std::vector<std::string> b_sym;
-    std::vector<double> b_px;
-    std::vector<int> b_sz;
-    std::vector<char> b_type;
-    std::vector<char> b_side;
-
 public:
-    KdbLogger() { handle = -1; reserve_buffers(); }
-    ~KdbLogger() { flush_market(); if (handle > 0) kclose(handle); }
+    KdbLogger() { handle = -1; }
 
-    void reserve_buffers() {
-        b_time.reserve(MARKET_BATCH_LIMIT); b_sym.reserve(MARKET_BATCH_LIMIT);
-        b_px.reserve(MARKET_BATCH_LIMIT); b_sz.reserve(MARKET_BATCH_LIMIT);
-        b_type.reserve(MARKET_BATCH_LIMIT); b_side.reserve(MARKET_BATCH_LIMIT);
+    ~KdbLogger() {
+        if (handle > 0) kclose(handle);
     }
 
     void connect() {
@@ -49,6 +36,17 @@ public:
         last_retry_time = now;
         connect();
         return (handle > 0);
+    }
+
+    // Helper function to trim trailing spaces in-place (optional, or inline it)
+    void trim_trailing_spaces(char* str, int length) {
+        for (int i = length - 1; i >= 0; --i) {
+            if (str[i] == ' ') {
+                str[i] = '\0';
+            } else {
+                break;
+            }
+        }
     }
 
     void log_ouch(long long ns_time, const char* raw_sym, double price, int size, char side, long order_id) {
@@ -81,33 +79,11 @@ public:
             kj(order_id)
         ), (K)0);
         
-        // if (result == 0) { 
-        //     std::cerr << "[KDB] Write Error!" << std::endl;
-        //     kclose(handle); 
-        //     handle = -1; 
-        // }
-    }
-
-    // MARKET: Batched (Fixes the Lag)
-    void flush_market() {
-        if (b_time.empty() || handle <= 0) return;
-        int n = b_time.size();
-        K c_time = ktn(KP, n), c_sym = ktn(KS, n), c_px = ktn(KF, n), c_sz = ktn(KI, n), c_msg = ktn(KC, n), c_side = ktn(KC, n);
-        
-        for (int i = 0; i < n; i++) {
-            kJ(c_time)[i] = b_time[i];
-            kS(c_sym)[i]  = ks((char*)b_sym[i].c_str())->s;
-            kF(c_px)[i]   = b_px[i];
-            kI(c_sz)[i]   = b_sz[i];
-            kG(c_msg)[i]  = b_type[i];
-            kG(c_side)[i] = b_side[i];
+        if (result == 0) { 
+            std::cerr << "[KDB] Write Error!" << std::endl;
+            kclose(handle); 
+            handle = -1; 
         }
-
-        // std::cout<< "Sending Batch\n";
-        K res = k(-handle, (char*)".u.upd", ks((char*)"market"), knk(6, c_time, c_sym, c_px, c_sz, c_msg, c_side), (K)0);
-        // if (res) r0(res);
-        // std::cout << "res " << res << std::endl;
-        b_time.clear(); b_sym.clear(); b_px.clear(); b_sz.clear(); b_type.clear(); b_side.clear();
     }
 
     void log_itch(long long ns_time, const char* raw_sym, double price, int size, char msg_type, char side) {
@@ -126,15 +102,23 @@ public:
                 break; 
             }
         }
-        
-        b_time.push_back(ns_time - KDB_EPOCH_OFFSET);
-        b_sym.push_back(std::string(safe_sym));
-        b_px.push_back(price);
-        b_sz.push_back(size);
-        b_type.push_back(msg_type);
-        b_side.push_back(side);
 
-        // std::cout << "b_time.size() = " << b_time.size() << std::endl;
-        if (b_time.size() >= MARKET_BATCH_LIMIT) flush_market();
+        long long kdb_time = ns_time - KDB_EPOCH_OFFSET;
+
+        // 3. SEND TO KDB
+        K result = k(-handle, (char*)".u.upd", ks((char*)"market"), knk(6,
+            ktj(-KP, kdb_time),
+            ks(safe_sym),  // <--- This now creates `AAPL`
+            kf(price),
+            ki(size),
+            kc(msg_type),
+            kc(side)
+        ), (K)0);
+
+        if (result == 0) { 
+            kclose(handle); 
+            handle = -1; 
+        }
     }
 };
+

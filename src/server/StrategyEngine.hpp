@@ -19,7 +19,7 @@ class StrategyEngine {
 
 public:
     StrategyEngine(LockFreeQueue<Event, 4096>& queue, 
-        LockFreeQueue<TradeLog, 4096>& log_q, // <--- ACCEPT REF
+        LockFreeQueue<TradeLog, 4096>& log_q, 
         std::atomic<bool>& running, 
         SharedBook* shared_mem )
     : queue_(queue), log_q_(log_q), running_(running), shared_snapshot_(shared_mem) {}
@@ -32,71 +32,46 @@ public:
         gateway.connect_to_exchange("127.0.0.1", 60000);
         
         // 65536 OrderBooks are created here via Default Constructor
+        // Allocating this on stack/heap is fine, it's ~100MB
         std::vector<OrderBook> books(65536); 
-
-        // FIX: Configure the existing book instead of overwriting it
-        // (Because OrderBook cannot be moved due to atomic spinlock)
-        // books[1].set_shared_memory(shared_snapshot_);
 
         StockDirectory& directory = StockDirectory::instance();
         ArbSniper sniper(gateway, log_q_, shared_snapshot_);
         Event evt;
 
-        // INIT: Start with Locate 1
-        uint32_t current_locate = 1;
-        // if (shared_snapshot_) {
-        //     books[current_locate].set_shared_memory(shared_snapshot_);
-        //     shared_snapshot_->active_locate = current_locate;
-        //     shared_snapshot_->command_locate = current_locate; // Sync init
-        // }
-
         while (running_) {
-            // --- 1. CHECK FOR COMMANDS FROM PYTHON ---
-            // if (shared_snapshot_) {
-            //     uint32_t requested = shared_snapshot_->command_locate;
-                
-            //     // If Python asked for a different stock (and it's valid)
-            //     if (requested != current_locate && requested > 0 && requested < 65536) {
-                    
-            //         // A. Detach old book
-            //         books[current_locate].set_shared_memory(nullptr);
-                    
-            //         // B. Switch target
-            //         current_locate = requested;
-                    
-            //         // C. Attach new book
-            //         books[current_locate].set_shared_memory(shared_snapshot_);
-                    
-            //         // D. Confirm switch to Python
-            //         shared_snapshot_->active_locate = current_locate;
-            //     }
-            // }
             
+            // Consume events from Feed
+            // Note: queue_.pop() is non-blocking. If empty, we loop back to 'while(running_)'
+            // This acts as a busy-wait loop, which is desired for HFT strategy (Low Latency).
             while (queue_.pop(evt)) {
+                
                 uint16_t loc = 0;
-                TradeLog log; // Create the log object
+                TradeLog log; 
                 bool should_log = false;
 
                 if (evt.type == 'A') {
                     loc = evt.add.locate;
                     books[loc].add_order(evt.add);
+                    
                     log.timestamp = evt.add.timestamp;
                     log.order_id  = evt.add.order_ref;
                     log.price     = evt.add.price;
                     log.quantity  = evt.add.shares;
-                    log.action    = 'A'; // 'A'dd
+                    log.action    = 'A'; 
                     log.side      = evt.add.side;
-                    log.set_symbol(directory.get_symbol(loc)); // Requires your new TradeLog
+                    log.set_symbol(directory.get_symbol(loc)); 
                     should_log = true;
                 } 
                 else if (evt.type == 'D') {
                     loc = evt.del.locate;
                     books[loc].cancel_order(evt.del);
+                    
                     log.timestamp = evt.del.timestamp;
                     log.order_id  = evt.del.order_ref;
-                    log.price     = 0; // Deletes often don't have price, or you fetch from book
+                    log.price     = 0; 
                     log.quantity  = 0; 
-                    log.action    = 'D'; // 'D'elete
+                    log.action    = 'D'; 
                     log.side      = '-';
                     log.set_symbol(directory.get_symbol(loc));
                     should_log = true;
@@ -104,23 +79,39 @@ public:
                 else if (evt.type == 'E') {
                     loc = evt.exec.locate;
                     books[loc].execute_order(evt.exec);
+                    
                     log.timestamp = evt.exec.timestamp;
                     log.order_id  = evt.exec.order_ref;
                     log.price     = 0; 
                     log.quantity  = evt.exec.executed_shares;
-                    log.action    = 'E'; // 'E'xecute
+                    log.action    = 'E';
                     log.side      = ' ';
                     log.set_symbol(directory.get_symbol(loc));
                     should_log = true;
                 }
 
+                // Run Strategy Logic
                 if (loc > 0) {
                     sniper.on_book_update(books[loc], directory.get_symbol(loc));
                 }
+
+                // Log the event
                 if (should_log) {
-                    log_q_.push(log);
+                    // CRITICAL FIX: Blocking Push
+                    // If Logger is stuck (KDB full), we WAIT here.
+                    // This creates backpressure so we don't drop logs.
+                    if (!log_q_.push_blocking(log, running_)) {
+                        goto shutdown; // Break out of everything if running_ becomes false
+                    }
                 }
             }
+            
+            // Optional: CPU Relax if queue is empty to save power?
+            // For pure HFT, remove this. For dev/testing, keep it.
+             _mm_pause(); 
         }
+        
+    shutdown:
+        std::cout << "[STRATEGY] Thread Exiting..." << std::endl;
     }
 };

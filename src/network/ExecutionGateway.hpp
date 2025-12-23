@@ -7,6 +7,7 @@
 #include <thread>
 #include <atomic>
 #include <cstring>
+#include <chrono>
 #include "../parser/Ouch.hpp"
 
 // --- 1. ADD 64-BIT SWAP HELPER ---
@@ -80,9 +81,7 @@ private:
                 uint32_t qty = ntohl(exec->qty);
                 uint64_t match_id = ntohll(exec->match_id); // USE NEW HELPER
 
-                std::cout << ">>> [REAL TRADE] CONFIRMED! Token: " << safe_token 
-                          << " | Qty: " << qty
-                          << " | MatchID: " << match_id << std::endl;
+                // std::cout << ">>> [REAL TRADE] CONFIRMED! Token: " << safe_token << " | Qty: " << qty << " | MatchID: " << match_id << std::endl;
             }
         }
     }
@@ -129,6 +128,8 @@ public:
     void shoot_order(char side, uint32_t price, uint32_t qty, const char* symbol) {
         if (!connected_) return;
 
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
+
         EnterOrderMsg msg{};
         format_enter_order(msg, next_order_id_++, side, qty, price, symbol);
 
@@ -145,9 +146,8 @@ public:
 
         log_q_.push(log);
         
-        std::cout << ">>> [EXEC] FIRED! " << symbol <<  (side == 'B' ? " BUY " : " SELL ") 
-                  << qty << " @ " << (price / 10000.0) << std::endl;
+        // std::cout << ">>> [EXEC] FIRED! " << symbol <<  (side == 'B' ? " BUY " : " SELL ") << qty << " @ " << (price / 10000.0) << std::endl;
         
-        sleep(1); 
+        // sleep(1); 
     }
 };

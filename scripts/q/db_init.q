@@ -1,38 +1,39 @@
-/ CONFIG
-envPath: getenv `LOG_DIR;
-logPath: hsym `$ $[count envPath; envPath; "/home/vizhal/cpp_projects/Titan/logs"];
+/ ==============================================================================
+/  TITAN KDB+ ANALYTICS BACKEND
+/  Schema Alignment: STRICT MATCH
+/ ==============================================================================
 
-/ SCHEMA
-/ We map the binary bytes directly to Q types.
-/ j=long(8), S=sym(8), i=int(4), i=int(4), i=int(4), c=char(1), c=char(1), x=byte(1)
+/ 1. LISTEN ON PORT 5001
+\p 5001
 
-/ FIX: Rename 'cols' to 'colNames' to avoid reserved keyword conflict
-colNames: `time`sym`px`qty`oid`act`side`pad1`pad2;
+/ 2. CLEAR STATE
+delete orders, market from `.;
 
-/ TYPES & WIDTHS
-/ Total: 8+8+4+4+4+1+1+1+1 = 32 bytes
-types: "jSiiiccxx";
-widths: 8 8 4 4 4 1 1 1 1;
+/ 3. DEFINE FINAL SCHEMA
+/ Note: 'time' must be timespan$() because C++ sends type -16 (ktj -KN)
 
-/ LOAD
-ouch: flip colNames ! (types; widths) 1: hsym `$(string logPath),"/ouch.bin";
-itch: flip colNames ! (types; widths) 1: hsym `$(string logPath),"/itch.bin";
+orders: ([] 
+    time:`timestamp$();   / Matches Type -16
+    sym:`symbol$();      / Matches Type -11
+    price:`float$();     / Matches Type -9
+    size:`int$();        / Matches Type -6
+    side:`char$();       / Matches Type -10
+    orderID:`long$()     / Matches Type -7
+ );
 
-/ CLEANUP
-/ 1. Drop padding columns
-/ 2. Scale Price (int -> float)
-ouch: delete pad1, pad2 from ouch;
-itch: delete pad1, pad2 from itch;
+market: ([] 
+    time:`timestamp$();   / Matches Type -16
+    sym:`symbol$();      / Matches Type -11
+    price:`float$();     / Matches Type -9
+    size:`int$();        / Matches Type -6
+    msgType:`char$();    / Matches Type -10
+    side:`char$()        / Matches Type -10
+ );
 
-ouch: update px: px * 0.0001 from ouch;
-itch: update px: px * 0.0001 from itch;
+/ 4. PRODUCTION HANDLER
+.u.upd: {[t;x] 
+    // x[1]: `$rtrim string x[1];  / Cast to string -> Trim -> Cast back to Symbol
+    t insert x; 
+ };
 
-/ DISPLAY
--1 ">>> OUCH TABLE (32-Byte Aligned) <<<";
-show 5#ouch;
-
--1 "";
--1 ">>> ITCH TABLE (32-Byte Aligned) <<<";
-show 5#itch;
-
-exit 0;
+-1 ">>> TITAN ANALYTICS: SCHEMA SYNCHRONIZED <<<";
