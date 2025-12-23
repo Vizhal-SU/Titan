@@ -79,7 +79,7 @@ def get_analytics(conn, sym, history_mins):
         # Target ~300 candles on screen for optimal readability
         total_seconds = history_mins * 60
         
-        if total_seconds <= 18  0:      # < 5 mins
+        if total_seconds <= 180:      # < 5 mins
             bin_size = "0D00:00:01.000000000" # 1s bars
         elif total_seconds <= 300:   # 5-30 mins
             bin_size = "0D00:00:03.000000000" # 5s bars
